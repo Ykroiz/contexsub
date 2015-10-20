@@ -1,17 +1,16 @@
 __author__ = 'davbr'
 import os
-import sys
 from xmlrpc.client import ServerProxy, Error
 from oshash import hashFile
 from urllib.request import urlretrieve
 from zipfile import ZipFile
-import configparser
 from win32event import CreateMutex
 from win32api import CloseHandle, GetLastError
 from winerror import ERROR_ALREADY_EXISTS
 from tkinter import *
 import tkinter.messagebox
 import gettext
+from confgui import Conf
 
 
 
@@ -73,82 +72,49 @@ class SingleInstance:
         if self.mutex:
             CloseHandle(self.mutex)
 
-class Conf(configparser.ConfigParser):
-    def __init__(self, configfile, cfgdefaults, **kwargs):
-        super(Conf, self).__init__()
-        self.configfile = configfile
-        if not os.path.exists(configfile):
-            self['DEFAULT'] = cfgdefaults
-            for key, value in kwargs.items():
-                self[key] = value
-            with open(configfile, 'w') as cfgfile:
-                self.write(cfgfile)
-        else:
-            self.read(CFG_FILE)
 
-    def guiconf(self):
-        guifields={"DEFAULT": {}}
+
+def displayoslink():
+    import webbrowser
+    import threading
+
+    def callback(event):
+        webbrowser.open_new(OS_LINK)
+
+    def showlink():
         root = Tk()
-
-        def callback():
-            nonlocal self
-            for key in guifields["DEFAULT"]:
-                self["DEFAULT"][key] = guifields["DEFAULT"][key].get()
-            with open(self.configfile, 'w') as cfgfile:
-                self.write(cfgfile)
-
-        for key in self["DEFAULT"].keys():
-            frame = Frame(root)
-            frame.pack(side=TOP)
-            Label(frame, text=key).pack(side=LEFT)
-            guifields["DEFAULT"][key] = Entry(frame)
-            guifields["DEFAULT"][key].insert(0, self["DEFAULT"][key])
-            guifields["DEFAULT"][key].pack(side=LEFT)
-
-        Button(root, text="Save", command=callback).pack(side=TOP)
+        root.lift()
+        root.resizable(width=False, height=False)
+        root.title(_('Searching for subtitles on opensubtitles.org'))
+        root.attributes("-topmost", 1)
+        oslogo = PhotoImage(file=OS_LOGO)
+        link = Label(root, image=oslogo, cursor="hand2")
+        link.pack()
+        link.bind("<Button-1>", callback)
         root.mainloop()
 
+    class GuiThread(threading.Thread):
+        def __init__(self):
+            threading.Thread.__init__(self)
 
+        def run(self):
+            showlink()
+
+    guithread = GuiThread()
+    guithread.start()
 
 
 if __name__ == "__main__":
     if len(sys.argv) >= 2:
         if sys.argv[1] == "config":
-            config = Conf(CFG_FILE, CFG_DEFAULT)
+            config = Conf(CFG_FILE, {"DEFAULT": CFG_DEFAULT})
             config.guiconf()
         else:
             cxs = SingleInstance()
-
             if not cxs.isrunning():
-                import webbrowser
-                import threading
+                displayoslink()
 
-                def callback(event):
-                    webbrowser.open_new(OS_LINK)
-
-                def showlink():
-                    root = Tk()
-                    root.lift()
-                    root.resizable(width=False, height=False)
-                    root.title(_('Searching for subtitles on opensubtitles.org'))
-                    root.attributes("-topmost", 1)
-                    oslogo = PhotoImage(file=OS_LOGO)
-                    link = Label(root, image=oslogo, cursor="hand2")
-                    link.pack()
-                    link.bind("<Button-1>", callback)
-                    root.mainloop()
-
-                class GuiThread(threading.Thread):
-                    def __init__(self):
-                        threading.Thread.__init__(self)
-
-                    def run(self):
-                        showlink()
-
-                guithread = GuiThread()
-                guithread.start()
-
-            config = Conf(CFG_FILE, CFG_DEFAULT)
+            config = Conf(CFG_FILE, {"DEFAULT": CFG_DEFAULT})
             try:
                 movie = Movie(sys.argv[1])
             except Exception:
