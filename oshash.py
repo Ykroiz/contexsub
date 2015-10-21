@@ -1,6 +1,10 @@
 import struct, os
 
 def hashFile(name):
+    """
+    This is the hash function used by opensubtitles.org.
+    Just copied it from the site, no idea what it's doing
+    """
     try:
 
         longlongformat = '<q'  # little-endian long long

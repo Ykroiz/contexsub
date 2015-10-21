@@ -5,7 +5,15 @@ import configparser
 from tkinter import *
 
 class Conf(configparser.ConfigParser):
+    """
+    Configparser, automatically creates config file if absent, and gui config editor
+    """
     def __init__(self, configfile, cfgdefaults):
+        """
+        :param configfile: configuration file (string)
+        :param cfgdefaults: default values. if configfile does not exist, it will be created with these defaults
+        :return:
+        """
         super(Conf, self).__init__()
         self.configfile = configfile
         if not os.path.exists(configfile):
@@ -16,8 +24,15 @@ class Conf(configparser.ConfigParser):
         else:
             self.read(configfile)
 
-    def guiconf(self):
-        guifields={"DEFAULT": {}}
+    def guiconf(self, hide=("",)):
+        """
+        Simply iterate on all sections and fields, displaying a very basic gui to edit the configuration
+        :param hide: list of sections to hide from gui
+        :return:
+        """
+        guifields={}
+        guifields.update({section: {} for section in self.sections()})
+        guifields["DEFAULT"] = {key: {} for key in self["DEFAULT"].keys()}
         root = Tk()
 
         def callback():
@@ -28,15 +43,7 @@ class Conf(configparser.ConfigParser):
             with open(self.configfile, 'w') as cfgfile:
                 self.write(cfgfile)
 
-        for key in self["DEFAULT"].keys():
-            frame = Frame(root)
-            frame.pack(side=TOP)
-            Label(frame, text=key).pack(side=LEFT)
-            guifields["DEFAULT"][key] = Entry(frame)
-            guifields["DEFAULT"][key].insert(0, self["DEFAULT"][key])
-            guifields["DEFAULT"][key].pack(side=LEFT)
-
-        for section in self.sections():
+        for section in ((set(self.sections()) | set(("DEFAULT",))) - set(hide)):
             secframe = Frame(root)
             secframe.pack(side=TOP)
             Label(secframe, text=section).pack(side=LEFT)
