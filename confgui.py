@@ -19,6 +19,8 @@ class Conf(configparser.ConfigParser):
         if not os.path.exists(configfile):
             for key, value in cfgdefaults.items():
                 self[key] = value
+            if not os.path.exists(os.path.dirname(configfile)):
+                os.makedirs(os.path.dirname(configfile))
             with open(configfile, 'w') as cfgfile:
                 self.write(cfgfile)
         else:

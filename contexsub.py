@@ -13,10 +13,14 @@ import gettext
 from confgui import Conf
 
 
+try:
+    APP_PATH = os.path.normpath(os.path.dirname(os.path.realpath(__file__)))
+except NameError:
+    import sys
+    APP_PATH = os.path.normpath(os.path.dirname(os.path.realpath(sys.argv[0])))
 
-APP_PATH = os.path.normpath(os.path.dirname(os.path.realpath(__file__)))
 OS_LOGO = APP_PATH + "\\oslogo.gif"
-CFG_FILE = APP_PATH + "\\contexsub.cfg"
+CFG_FILE = os.path.join(os.path.join(os.environ['USERPROFILE'], "Appdata\\roaming"), "contexsub") + "\\contexsub.cfg"
 LOCALE_PATH = APP_PATH + "\\locale\\"
 OS_LINK = 'http://www.opensubtitles.org'
 CFG_DEFAULT = {"USER": {"language": "eng",
