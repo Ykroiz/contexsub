@@ -1,9 +1,5 @@
 __author__ = 'davbr'
 import os
-from xmlrpc.client import ServerProxy, Error
-from oshash import hashFile
-from urllib.request import urlretrieve
-from zipfile import ZipFile
 from win32event import CreateMutex
 from win32api import CloseHandle, GetLastError
 from winerror import ERROR_ALREADY_EXISTS
@@ -11,6 +7,8 @@ from tkinter import *
 import tkinter.messagebox
 import gettext
 from confgui import Conf
+from ossession import *
+import struct
 
 
 try:
@@ -26,7 +24,7 @@ OS_LINK = 'http://www.opensubtitles.org'
 CFG_DEFAULT = {"USER": {"language": "eng",
                            "username": "",
                            "password": ""},
-               "OS_CFG": {"key": "OSTestUserAgent",
+               "OS_CFG": {"key": "contexsub",
                           "address": "https://api.opensubtitles.org/xml-rpc"}
                }
 
@@ -34,41 +32,7 @@ gettext.bindtextdomain('contexsub', LOCALE_PATH)
 gettext.textdomain('contexsub')
 _ = gettext.gettext
 
-class SubExceptions(Exception):
-    """
-    Deal with exceptions emerging from login attempts and empty search results
-    """
-    def __init__(self, expression, message):
-        self.expression = expression
-        self.message = message
 
-
-class OsSession(ServerProxy):
-    """
-    XML-RPC session with opensubtitles
-    """
-    def __init__(self, address, key, username="", password="", lang="en"):
-        """
-        :param address: OpenSubtitles server address
-        :param key: OpenSubtitles user agent key
-        :param username: Optional client username for opensubtitles.org
-        :param password: Optional password for aforementioned username
-        :param lang: THIS IS NOT THE LANGUAGE FOR THE SUBTITLES. this is language for th opensubtitles.org api
-            Usually there is no reason to change this
-        :return:
-        """
-        super(OsSession, self).__init__(address)
-        login = self.LogIn(username, password, lang, key) #LogIn is implemented by server XML-RPC
-        if login["status"] != "200 OK":
-            raise SubExceptions(login["status"], _("Login to OpenSubtitles failed"))
-        else:
-            self.token = login["token"] # Token used for communicating with server
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, type, value, traceback):
-        self.LogOut(self.token)
 
 class Movie:
     """
@@ -83,7 +47,37 @@ class Movie:
         """
         self.filename = filename
         self.size = os.path.getsize(filename)
-        self.hash = hashFile(filename)
+        self.hash = self._movieHash()
+
+    def _movieHash(self):
+        longlongformat = '<q'
+        bytesize = struct.calcsize(longlongformat)
+        try:
+            with open(self.filename, 'rb') as f:
+                hash = self.size
+
+                if self.size < 65536 * 2:
+                    raise Exception("SizeError")
+
+                for x in range(65536//bytesize):
+                    buffer = f.read(bytesize)
+                    (l_value,)= struct.unpack(longlongformat, buffer)
+                    hash += l_value
+                    hash = hash & 0xFFFFFFFFFFFFFFFF #to remain as 64bit number
+
+                f.seek(max(0,self.size-65536),0)
+                for x in range(65536//bytesize):
+                    buffer = f.read(bytesize)
+                    (l_value,)= struct.unpack(longlongformat, buffer)
+                    hash += l_value
+                    hash = hash & 0xFFFFFFFFFFFFFFFF
+
+                returnedhash =  "%016x" % hash
+                return returnedhash
+        except(IOError):
+            raise
+        except(Exception("SizeError")):
+            raise
 
 
 
@@ -153,7 +147,7 @@ def displayoslink():
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 2: # Argument is a filename of the video file, or none to open configuration gui
+    if len(sys.argv) >= 2:  # Argument is a filename of the video file, or none to open configuration gui
             cxs = SingleInstance()
             # We only display the link once.
             if not cxs.isrunning():
@@ -165,31 +159,31 @@ if __name__ == "__main__":
             except Exception:
                 sys.exit(1)
             # Search for subtitles by hash
-            moviedetails = {"moviehash": movie.hash, "moviesize": movie.size, "sublanguageid": config["USER"]["language"]}
+            moviedetails = {
+                "moviehash": movie.hash,
+                "moviesize": movie.size,
+                "sublanguageid": config["USER"]["language"]
+            }
             query = [moviedetails, {"limit": 1}]
             key = config["OS_CFG"]["key"]
             address = config["OS_CFG"]["address"]
             try:
                 with OsSession(address, key) as subserver:
-                    subs = subserver.SearchSubtitles(subserver.token, query)["data"][0] # SearchSubtitles is implemented by server XML-RPC
+                    # SearchSubtitles is implemented by server XML-RPC
+                    subs = subserver.SearchSubtitles(query)["data"][0]
                     if subs == None: raise SubExceptions("Empty_List", _("No subtitles found"))
+                    # many players automatically use sub file with filename similiar to the video's
+                    if os.path.exists(os.path.splitext(movie.filename)[0] + '_' + subs["SubLanguageID"] + ".srt"):
+                        raise FileExistsError
+                    else:
+                        with open(os.path.splitext(movie.filename)[0] + '_' + subs["SubLanguageID"] + ".srt", "wb") as f:
+                            f.write(subserver.GetSubtitles(subs))
             except SubExceptions as e:
                 tkinter.messagebox.showerror(e.expression, e.message)
                 sys.exit(1)
-            try:
-                zipsub = ZipFile(urlretrieve(subs["ZipDownloadLink"])[0])
-                fname = zipsub.extract(subs["SubFileName"], os.path.dirname(movie.filename))
-                os.rename(fname, os.path.splitext(movie.filename)[0] + '_' + subs["SubLanguageID"] + ".srt") # many players automatically use sub file with filename similiar to the video's
             except FileExistsError:
                 tkinter.messagebox.showerror(title="File Exist", message=_("Subtitles file already exist"))
                 pass
     else:
         config = Conf(CFG_FILE, CFG_DEFAULT)
         config.guiconf(hide=("OS_CFG",))
-
-
-
-
-
-
-
